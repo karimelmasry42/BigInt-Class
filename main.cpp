@@ -10,14 +10,24 @@ class BigInt
     // Remove unnecessary leading zeros from the number string
     void removeLeadingZeros()
     {
-        // TODO: Implement this function
+        size_t nonZeroPos = 0;
+        while (nonZeroPos < number.size() - 1 && number[nonZeroPos] == '0') {
+            ++nonZeroPos;
+        }
+        number = number.substr(nonZeroPos);
     }
 
     // Compare absolute values of two BigInts (ignore signs)
     // Returns: 1 if |this| > |other|, 0 if equal, -1 if |this| < |other|
     int compareMagnitude(const BigInt &other) const
     {
-        // TODO: Implement this function
+        if (number.size() > other.number.size()) return 1;
+        if (number.size() < other.number.size()) return -1;
+
+        for (size_t i = 0; i < number.size(); ++i) {
+            if (number[i] > other.number[i]) return 1;
+            if (number[i] < other.number[i]) return -1;
+        }
         return 0;
     }
 
@@ -45,7 +55,7 @@ public:
     // Constructor from string representation
     BigInt(const string &str)
     {
-        if(str[0] == '-'){
+        if(!str.empty() && str[0] == '-'){
             isNegative = true;
             number = str.substr(1, str.size());
         }
@@ -53,8 +63,8 @@ public:
             isNegative = false;
             number = str;
         }
-            
-        this->removeLeadingZeros;
+
+        this->removeLeadingZeros();
     }
 
     // Copy constructor
@@ -67,43 +77,125 @@ public:
     // Destructor
     ~BigInt()
     {
-        
+
     }
 
     // Assignment operator
     BigInt &operator=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        if (this != &other) {
+            number = other.number;
+            isNegative = other.isNegative;
+        }
         return *this;
     }
 
     // Unary negation operator (-x)
     BigInt operator-() const
     {
-        BigInt result;
-        // TODO: Implement negation logic
-        return result;
+        lhs -= rhs;
+        return lhs;
     }
 
     // Unary plus operator (+x)
     BigInt operator+() const
     {
-        BigInt result;
-        // TODO: Implement this operator
-        return result;
+        lhs += rhs;
+        return lhs;
     }
 
     // Addition assignment operator (x += y)
     BigInt &operator+=(const BigInt &other)
     {
-        // TODO: Implement this operator
-        return *this;
+        if (other.number == "0") return *this;
+
+        if (number == "0") {
+            number = other.number;
+            isNegative = other.isNegative;
+            return *this;
+        }
+        if (isNegative == other.isNegative) {
+            string result = "";
+            int carry = 0;
+            int i = number.size() - 1;
+            int j = other.number.size() - 1;
+
+            while (i >= 0 || j >= 0 || carry) {
+                int sum = carry;
+                if (i >= 0) sum += number[i--] - '0';
+                if (j >= 0) sum += other.number[j--] - '0';
+                carry = sum / 10;
+                sum %= 10;
+                result = char(sum + '0') + result;
+            }
+            number = result;
+            } else {
+                BigInt temp = other;
+                temp.isNegative = !temp.isNegative;
+                *this -= temp;
+            }
+
+            return *this;
+
     }
 
     // Subtraction assignment operator (x -= y)
     BigInt &operator-=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        if (other.number == "0") return *this;
+
+        if (number == "0") {
+            number = other.number;
+            isNegative = !other.isNegative;
+            return *this;
+        }
+        if (isNegative != other.isNegative) {
+            BigInt temp = other;
+            temp.isNegative = !temp.isNegative;
+            *this += temp;
+        } else {
+            int cmp = compareMagnitude(other);
+            if (cmp == 0) {
+                number = "0";
+                isNegative = false;
+            } else {
+                string larger, smaller;
+                bool resultNegative;
+
+                if (cmp > 0) {
+                    larger = number;
+                    smaller = other.number;
+                    resultNegative = isNegative;
+                } else {
+                    larger = other.number;
+                    smaller = number;
+                    resultNegative = !isNegative;
+                }
+
+                string result = "";
+                int borrow = 0;
+                int i = larger.size() - 1;
+                int j = smaller.size() - 1;
+
+                while (i >= 0) {
+                    int diff = (larger[i] - '0') - borrow;
+                    if (j >= 0) diff -= (smaller[j] - '0');
+                    if (diff < 0) {
+                    diff += 10;
+                        borrow = 1;
+                    } else {
+                        borrow = 0;
+                    }
+                    result = char(diff + '0') + result;
+                    i--; j--;
+                }
+
+                number = result;
+                removeLeadingZeros();
+                isNegative = resultNegative;
+            }
+        }
+
         return *this;
     }
 
@@ -131,38 +223,43 @@ public:
     // Pre-increment operator (++x)
     BigInt &operator++()
     {
-        // TODO: Implement this operator
+        *this += BigInt(1);
         return *this;
     }
 
     // Post-increment operator (x++)
     BigInt operator++(int)
     {
-        BigInt temp;
-        // TODO: Implement this operator
+        BigInt temp = *this;
+        ++(*this);
         return temp;
     }
 
     // Pre-decrement operator (--x)
     BigInt &operator--()
     {
-        // TODO: Implement this operator
+        *this -= BigInt(1);
         return *this;
     }
 
     // Post-decrement operator (x--)
     BigInt operator--(int)
     {
-        BigInt temp;
-        // TODO: Implement this operator
+        BigInt temp = *this;
+        --(*this);
         return temp;
     }
 
     // Convert BigInt to string representation
     string toString() const
     {
-        // TODO: Implement this function
-        return "";
+        return (isNegative && number != "0" ? "-" : "") + number;
+    }
+
+    friend ostream &operator<<(ostream &os, const BigInt &num)
+    {
+        os << num.toString();
+        return os;
     }
 
     // Output stream operator (for printing)
@@ -227,43 +324,39 @@ BigInt operator%(BigInt lhs, const BigInt &rhs)
 // Equality comparison operator (x == y)
 bool operator==(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return lhs.isNegative == rhs.isNegative && lhs.number == rhs.number;
 }
 
 // Inequality comparison operator (x != y)
 bool operator!=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(lhs == rhs);
 }
 
 // Less-than comparison operator (x < y)
 bool operator<(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    if(lhs.isNegative != rhs.isNegative) return lhs.isNegative;
+    int cmp = lhs.compareMagnitude(rhs);
+    return lhs.isNegative ? cmp > 0 : cmp < 0;
 }
 
 // Less-than-or-equal comparison operator (x <= y)
 bool operator<=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return (lhs < rhs) || (lhs == rhs);
 }
 
 // Greater-than comparison operator (x > y)
 bool operator>(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(lhs <= rhs);
 }
 
 // Greater-than-or-equal comparison operator (x >= y)
 bool operator>=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(lhs < rhs);
 }
 
 int main()
