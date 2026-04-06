@@ -25,31 +25,49 @@ public:
     // Default constructor - initialize to zero
     BigInt()
     {
-        // TODO: Implement this constructor
+        number = "0";
+        isNegative = false;
     }
 
     // Constructor from 64-bit integer
     BigInt(int64_t value)
     {
-        // TODO: Implement this constructor
+        if(value < 0){
+            isNegative = true;
+        }
+        else{
+            isNegative = false;
+        }
+
+        number = std::to_string((value < 0 ? -value : value));
     }
 
     // Constructor from string representation
     BigInt(const string &str)
     {
-        // TODO: Implement this constructor
+        if(str[0] == '-'){
+            isNegative = true;
+            number = str.substr(1, str.size());
+        }
+        else{
+            isNegative = false;
+            number = str;
+        }
+            
+        this->removeLeadingZeros;
     }
 
     // Copy constructor
     BigInt(const BigInt &other)
     {
-        // TODO: Implement this constructor
+        this->number = other.number;
+        this->isNegative = other.isNegative;
     }
 
     // Destructor
     ~BigInt()
     {
-        // TODO: Implement if needed
+        
     }
 
     // Assignment operator
