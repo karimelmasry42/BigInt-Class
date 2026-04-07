@@ -2,6 +2,8 @@
 #include <string>
 using namespace std;
 
+static void runNormalizationTests();
+
 class BigInt
 {
     string number;   // Stores the number as a string
@@ -10,14 +12,25 @@ class BigInt
     // Remove unnecessary leading zeros from the number string
     void removeLeadingZeros()
     {
-        // TODO: Implement this function
+        size_t start = number.find_first_not_of('0');
+        if (start == string::npos)
+            number = "0";
+        else
+            number = number.substr(start);
+
+        if (number == "0")
+            isNegative = false;
     }
 
     // Compare absolute values of two BigInts (ignore signs)
     // Returns: 1 if |this| > |other|, 0 if equal, -1 if |this| < |other|
     int compareMagnitude(const BigInt &other) const
     {
-        // TODO: Implement this function
+        if (number.size() != other.number.size())
+            return number.size() > other.number.size() ? 1 : -1;
+        int cmp = number.compare(other.number);
+        if (cmp > 0) return 1;
+        if (cmp < 0) return -1;
         return 0;
     }
 
@@ -54,7 +67,7 @@ public:
             number = str;
         }
             
-        this->removeLeadingZeros;
+        this->removeLeadingZeros();
     }
 
     // Copy constructor
@@ -182,6 +195,7 @@ public:
     // Friend declarations for comparison operators
     friend bool operator==(const BigInt &lhs, const BigInt &rhs);
     friend bool operator<(const BigInt &lhs, const BigInt &rhs);
+    friend void runNormalizationTests();
 };
 
 // Binary addition operator (x + y)
@@ -266,12 +280,38 @@ bool operator>=(const BigInt &lhs, const BigInt &rhs)
     return false;
 }
 
+// BIGINT-9: micro-tests for removeLeadingZeros and compareMagnitude
+static void runNormalizationTests()
+{
+    int passed = 0, failed = 0;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << endl; ++passed; }
+        else       { cout << "  FAIL: " << desc << endl; ++failed; }
+    };
+
+    cout << "--- removeLeadingZeros tests ---" << endl;
+    BigInt a("000123");  check(a.number == "123",  "\"000123\" -> \"123\"");
+    BigInt b("0000");    check(b.number == "0",    "\"0000\"  -> \"0\"");
+    BigInt neg0("-0");   check(neg0.number == "0" && !neg0.isNegative, "\"-0\" normalized to non-negative zero");
+
+    cout << "--- compareMagnitude tests ---" << endl;
+    BigInt x("100"), y("99"), z("100"), w("9");
+    check(x.compareMagnitude(y) == 1,  "longer > shorter (100 vs 99)");
+    check(y.compareMagnitude(x) == -1, "shorter < longer (99 vs 100)");
+    check(x.compareMagnitude(z) == 0,  "equal magnitudes (100 vs 100)");
+    check(y.compareMagnitude(w) == 1,  "same length, lex greater (99 vs 9 — both len 2)");
+
+    cout << "\nResults: " << passed << " passed, " << failed << " failed." << endl << endl;
+}
+
 int main()
 {
     cout << "=== BigInt Class Test Program ===" << endl
          << endl;
-    cout << "NOTE: All functions are currently empty." << endl;
-    cout << "Your task is to implement ALL the functions above." << endl;
+
+    runNormalizationTests();
+
+    cout << "NOTE: Remaining operator stubs are not yet implemented." << endl;
     cout << "The tests below will work once you implement them correctly." << endl
          << endl;
 
