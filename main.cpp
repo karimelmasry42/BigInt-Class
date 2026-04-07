@@ -5,6 +5,7 @@ using namespace std;
 
 static void runNormalizationTests();
 static void runAssignmentAndOutputTests();
+static void runInputStreamTests();
 
 class BigInt
 {
@@ -195,7 +196,9 @@ public:
     // Input stream operator (for reading from input)
     friend istream &operator>>(istream &is, BigInt &num)
     {
-        // TODO: Implement this operator
+        string token;
+        is >> token;
+        num = BigInt(token);
         return is;
     }
 
@@ -204,6 +207,7 @@ public:
     friend bool operator<(const BigInt &lhs, const BigInt &rhs);
     friend void runNormalizationTests();
     friend void runAssignmentAndOutputTests();
+    friend void runInputStreamTests();
 };
 
 // Binary addition operator (x + y)
@@ -362,6 +366,36 @@ static void runAssignmentAndOutputTests()
     cout << "\nResults: " << passed << " passed, " << failed << " failed." << endl << endl;
 }
 
+// BIGINT-22: unit tests for input stream operator>>
+static void runInputStreamTests()
+{
+    int passed = 0, failed = 0;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << endl; ++passed; }
+        else       { cout << "  FAIL: " << desc << endl; ++failed; }
+    };
+
+    cout << "--- operator>> tests ---" << endl;
+
+    BigInt a;
+    istringstream("999") >> a;
+    check(a.number == "999" && !a.isNegative, "\"999\" -> number=999, positive");
+
+    BigInt b;
+    istringstream("-999") >> b;
+    check(b.number == "999" && b.isNegative, "\"-999\" -> number=999, negative");
+
+    BigInt c;
+    istringstream("000123") >> c;
+    check(c.number == "123" && !c.isNegative, "\"000123\" -> leading zeros stripped to 123");
+
+    BigInt d;
+    istringstream("0") >> d;
+    check(d.number == "0" && !d.isNegative, "\"0\" -> number=0, non-negative");
+
+    cout << "\nResults: " << passed << " passed, " << failed << " failed." << endl << endl;
+}
+
 int main()
 {
     cout << "=== BigInt Class Test Program ===" << endl
@@ -369,6 +403,7 @@ int main()
 
     runNormalizationTests();
     runAssignmentAndOutputTests();
+    runInputStreamTests();
 
     cout << "NOTE: Remaining operator stubs are not yet implemented." << endl;
     cout << "The tests below will work once you implement them correctly." << endl
