@@ -1,8 +1,10 @@
 #include <iostream>
+#include <sstream>
 #include <string>
 using namespace std;
 
 static void runNormalizationTests();
+static void runAssignmentAndOutputTests();
 
 class BigInt
 {
@@ -86,7 +88,11 @@ public:
     // Assignment operator
     BigInt &operator=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        if (this != &other)
+        {
+            number = other.number;
+            isNegative = other.isNegative;
+        }
         return *this;
     }
 
@@ -174,14 +180,15 @@ public:
     // Convert BigInt to string representation
     string toString() const
     {
-        // TODO: Implement this function
-        return "";
+        if (isNegative && number != "0")
+            return "-" + number;
+        return number;
     }
 
     // Output stream operator (for printing)
     friend ostream &operator<<(ostream &os, const BigInt &num)
     {
-        // TODO: Implement this operator
+        os << num.toString();
         return os;
     }
 
@@ -196,6 +203,7 @@ public:
     friend bool operator==(const BigInt &lhs, const BigInt &rhs);
     friend bool operator<(const BigInt &lhs, const BigInt &rhs);
     friend void runNormalizationTests();
+    friend void runAssignmentAndOutputTests();
 };
 
 // Binary addition operator (x + y)
@@ -304,12 +312,63 @@ static void runNormalizationTests()
     cout << "\nResults: " << passed << " passed, " << failed << " failed." << endl << endl;
 }
 
+// BIGINT-21: unit tests for assignment operator and string/stream output
+static void runAssignmentAndOutputTests()
+{
+    int passed = 0, failed = 0;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << endl; ++passed; }
+        else       { cout << "  FAIL: " << desc << endl; ++failed; }
+    };
+
+    cout << "--- assignment operator tests ---" << endl;
+
+    // copy assignment
+    BigInt src(42);
+    BigInt dst;
+    dst = src;
+    check(dst.number == "42" && !dst.isNegative, "copy assignment: value copied");
+
+    // self-assignment guard
+    BigInt self("999");
+    self = self;
+    check(self.number == "999" && !self.isNegative, "self-assignment: value unchanged");
+
+    // chained assignment
+    BigInt a, b;
+    a = b = BigInt("-7");
+    check(a.number == "7" && a.isNegative, "chained assignment: a gets -7");
+    check(b.number == "7" && b.isNegative, "chained assignment: b gets -7");
+
+    cout << "--- toString / operator<< tests ---" << endl;
+
+    // positive number
+    BigInt pos(12345);
+    check(pos.toString() == "12345", "toString positive: \"12345\"");
+
+    // negative number
+    BigInt neg("-67890");
+    check(neg.toString() == "-67890", "toString negative: \"-67890\"");
+
+    // zero (must not carry a minus sign)
+    BigInt zero(0);
+    check(zero.toString() == "0", "toString zero: \"0\"");
+
+    // operator<< agrees with toString
+    ostringstream oss;
+    oss << pos << " " << neg << " " << zero;
+    check(oss.str() == "12345 -67890 0", "operator<< positive, negative, zero");
+
+    cout << "\nResults: " << passed << " passed, " << failed << " failed." << endl << endl;
+}
+
 int main()
 {
     cout << "=== BigInt Class Test Program ===" << endl
          << endl;
 
     runNormalizationTests();
+    runAssignmentAndOutputTests();
 
     cout << "NOTE: Remaining operator stubs are not yet implemented." << endl;
     cout << "The tests below will work once you implement them correctly." << endl
