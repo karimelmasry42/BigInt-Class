@@ -457,7 +457,7 @@ static TestResult runConstructorTests()
         BigInt dst(src);
         checkEq(dst.toString(), "12345", "copy of positive: same value");
         checkBool(dst.isNegative, false, "copy of positive: not negative");
-        // Independence: modifying src should not affect dst
+        // Independence: modifying src's string should not affect dst
         src = BigInt(99);
         checkEq(dst.toString(), "12345", "copy is independent after src reassignment");
     }
@@ -562,34 +562,51 @@ static TestResult runAssignmentAndOutputTests()
 }
 
 // ---------------------------------------------------------------------------
-// BIGINT-22 / BIGINT-27: unit tests for input stream operator>>
-// BIGINT-29: checkEq shows expected vs actual on failure
+// BIGINT-22: unit tests for input stream operator>>
 // ---------------------------------------------------------------------------
 static TestResult runInputStreamTests()
 {
     TestResult r;
-    auto check = [&](bool cond, const char* desc) {
-        if (cond) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
-        else       { cout << "  FAIL: " << desc << "\n"; ++r.failed; }
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+    auto checkBool = [&](bool actual, bool expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: " << (expected ? "true" : "false") << "\n"
+                 << "        actual:   " << (actual   ? "true" : "false") << "\n";
+            ++r.failed;
+        }
     };
 
     cout << "--- operator>> ---\n";
 
     BigInt a;
     istringstream("999") >> a;
-    check(a.number == "999" && !a.isNegative, "\"999\" -> number=999, positive");
+    checkEq(a.number, "999", "\"999\" -> digits \"999\"");
+    checkBool(a.isNegative, false, "\"999\" -> not negative");
 
     BigInt b;
     istringstream("-999") >> b;
-    check(b.number == "999" && b.isNegative, "\"-999\" -> number=999, negative");
+    checkEq(b.number, "999", "\"-999\" -> digits \"999\"");
+    checkBool(b.isNegative, true, "\"-999\" -> negative");
 
     BigInt c;
     istringstream("000123") >> c;
-    check(c.number == "123" && !c.isNegative, "\"000123\" -> leading zeros stripped to 123");
+    checkEq(c.number, "123", "\"000123\" -> leading zeros stripped to \"123\"");
+    checkBool(c.isNegative, false, "\"000123\" -> not negative");
 
     BigInt d;
     istringstream("0") >> d;
-    check(d.number == "0" && !d.isNegative, "\"0\" -> number=0, non-negative");
+    checkEq(d.number, "0", "\"0\" -> digits \"0\"");
+    checkBool(d.isNegative, false, "\"0\" -> not negative");
 
     return r;
 }
@@ -608,7 +625,7 @@ int main()
         { "Normalization (edge cases)", runNormalizationEdgeCaseTests()},
         { "Constructors",               runConstructorTests()          },
         { "Assignment & Output",        runAssignmentAndOutputTests()  },
-        { "Input stream (>>)",          runInputStreamTests()          },
+        { "Input Stream (operator>>)",  runInputStreamTests()          },
     };
 
     cout << "\n=== Suite Summary ===\n";
