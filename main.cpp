@@ -255,8 +255,6 @@ BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
     int intermediate = 0;
     bool carry;
     
-    //TO DO negative cases and such
-
     while(lhs_pointer > -1 || rhs_pointer > -1 || carry){
         intermediate = carry;
         //The strategy is to have each digit add itself to a sum, the sum is like a bucket
@@ -268,10 +266,12 @@ BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
         
         result.number += itc(intermediate % 10);
         carry = intermediate > 9;
+
+        lhs_pointer--;
+        rhs_pointer--;
     }
 
     reverse(result.number.begin(),result.number.end());
-
 
     return result;
 }
