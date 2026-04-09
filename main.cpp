@@ -228,6 +228,28 @@ public:
 BigInt operator+(BigInt lhs, const BigInt &rhs)
 {
     BigInt result;
+    
+    if(!lhs.isNegative && !rhs->isNegative){
+        result = absolute_addition(lhs, rhs);
+    }
+    if(lhs.isNegative && rhs->isNegative){
+        result = absolute_addition(lhs, rhs);
+        result.isNegative = true;
+    }
+    if(!lhs.isNegative && rhs->isNegative){
+        result = lhs - rhs;
+    }
+    if(lhs.isNegative && !rhs->isNegative){
+        result = rhs - lhs;
+    }
+
+    return result;
+
+   
+}
+
+BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
+    BigInt result;
     int lhs_pointer = lhs.number.size() - 1;
     int rhs_pointer = rhs.number.size() - 1;
     int intermediate = 0;
@@ -247,6 +269,8 @@ BigInt operator+(BigInt lhs, const BigInt &rhs)
         result.number += itc(intermediate % 10);
         carry = intermediate > 9;
     }
+
+    reverse(result.number.begin(),result.number.end());
 
 
     return result;
