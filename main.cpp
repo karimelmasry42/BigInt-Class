@@ -1,6 +1,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <stdexcept>
 
 #define cti(X) ((X) - 48)
 #define itc(X) ((X) + 48)
@@ -16,10 +18,15 @@ static TestResult runNormalizationEdgeCaseTests();
 static TestResult runConstructorTests();
 static TestResult runAssignmentAndOutputTests();
 static TestResult runInputStreamTests();
+static TestResult runAdditionTests();
+static TestResult runSubtractionTests();
+static TestResult runMultiplicationTests();
+static TestResult runDivisionTests();
+static TestResult runModulusTests();
 
 class BigInt
 {
-    string number;   // Stores the number as a string
+    string number;   // Stores the number as a string (digits only, no sign)
     bool isNegative; // True if number is negative
 
     // Remove unnecessary leading zeros from the number string
@@ -47,60 +54,76 @@ class BigInt
         return 0;
     }
 
+    // Add two magnitude strings digit-by-digit (right to left), return result magnitude string
+    static string addMagnitudes(const string &a, const string &b)
+    {
+        string result;
+        int i = (int)a.size() - 1, j = (int)b.size() - 1;
+        int carry = 0;
+        while (i >= 0 || j >= 0 || carry) {
+            int sum = carry;
+            if (i >= 0) sum += cti(a[i--]);
+            if (j >= 0) sum += cti(b[j--]);
+            result += itc(sum % 10);
+            carry = sum / 10;
+        }
+        reverse(result.begin(), result.end());
+        return result;
+    }
+
+    // Subtract magnitude b from magnitude a (|a| >= |b|), return result magnitude string
+    static string subtractMagnitudes(const string &a, const string &b)
+    {
+        string result;
+        int i = (int)a.size() - 1, j = (int)b.size() - 1;
+        int borrow = 0;
+        while (i >= 0) {
+            int diff = cti(a[i--]) - borrow;
+            if (j >= 0) diff -= cti(b[j--]);
+            if (diff < 0) { diff += 10; borrow = 1; }
+            else borrow = 0;
+            result += itc(diff);
+        }
+        // Strip trailing zeros (they become leading zeros after reverse)
+        while (result.size() > 1 && result.back() == '0') result.pop_back();
+        reverse(result.begin(), result.end());
+        return result;
+    }
+
 public:
     // Default constructor - initialize to zero
-    BigInt()
-    {
-        number = "0";
-        isNegative = false;
-    }
+    BigInt() : number("0"), isNegative(false) {}
 
     // Constructor from 64-bit integer
     BigInt(int64_t value)
     {
-        if(value < 0){
-            isNegative = true;
-        }
-        else{
-            isNegative = false;
-        }
-
-        number = std::to_string((value < 0 ? -value : value));
+        isNegative = value < 0;
+        number = to_string(value < 0 ? -value : value);
     }
 
     // Constructor from string representation
     BigInt(const string &str)
     {
-        if(str[0] == '-'){
+        if (str[0] == '-') {
             isNegative = true;
-            number = str.substr(1, str.size());
-        }
-        else{
+            number = str.substr(1);
+        } else {
             isNegative = false;
             number = str;
         }
-
-        this->removeLeadingZeros();
+        removeLeadingZeros();
     }
 
     // Copy constructor
-    BigInt(const BigInt &other)
-    {
-        this->number = other.number;
-        this->isNegative = other.isNegative;
-    }
+    BigInt(const BigInt &other) : number(other.number), isNegative(other.isNegative) {}
 
     // Destructor
-    ~BigInt()
-    {
-
-    }
+    ~BigInt() {}
 
     // Assignment operator
     BigInt &operator=(const BigInt &other)
     {
-        if (this != &other)
-        {
+        if (this != &other) {
             number = other.number;
             isNegative = other.isNegative;
         }
@@ -110,8 +133,9 @@ public:
     // Unary negation operator (-x)
     BigInt operator-() const
     {
-        BigInt result;
-        // TODO: Implement negation logic
+        BigInt result(*this);
+        if (result.number != "0")
+            result.isNegative = !result.isNegative;
         return result;
     }
 
@@ -124,37 +148,150 @@ public:
     }
 
     // Addition assignment operator (x += y)
+    // Covers: same-sign addition, mixed-sign (converted to magnitude subtraction),
+    // sign assignment per SRS page-6 rules, normalization after operation.
     BigInt &operator+=(const BigInt &other)
     {
-        this = this + other;
+        int cmp = compareMagnitude(other);
+
+        if (isNegative == other.isNegative) {
+            // Same sign: add magnitudes, keep the shared sign
+            number = addMagnitudes(number, other.number);
+        } else {
+            // Different signs: subtract smaller magnitude from larger
+            if (cmp == 0) {
+                // Equal magnitudes, opposite signs → zero
+                number = "0";
+                isNegative = false;
+            } else if (cmp > 0) {
+                // |this| > |other|: keep this sign
+                number = subtractMagnitudes(number, other.number);
+            } else {
+                // |other| > |this|: take other's sign
+                number = subtractMagnitudes(other.number, number);
+                isNegative = other.isNegative;
+            }
+        }
+        removeLeadingZeros();
         return *this;
     }
 
     // Subtraction assignment operator (x -= y)
+    // Mixed-sign subtraction is converted to addition:  a - b == a + (-b)
     BigInt &operator-=(const BigInt &other)
     {
-        // TODO: Implement this operator
-        return *this;
+        BigInt negOther(other);
+        if (negOther.number != "0")
+            negOther.isNegative = !negOther.isNegative;
+        return *this += negOther;
     }
 
     // Multiplication assignment operator (x *= y)
+    // Schoolbook long multiplication; sign via XOR rule (page 7).
     BigInt &operator*=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        // Short-circuit if either operand is zero
+        if (number == "0" || other.number == "0") {
+            number = "0";
+            isNegative = false;
+            return *this;
+        }
+
+        const string &a = number;
+        const string &b = other.number;
+        int n = (int)a.size(), m = (int)b.size();
+        vector<int> res(n + m, 0);
+
+        // Multiply each digit pair and accumulate
+        for (int i = n - 1; i >= 0; i--) {
+            for (int j = m - 1; j >= 0; j--) {
+                int prod = cti(a[i]) * cti(b[j]);
+                int p1 = i + j, p2 = i + j + 1;
+                int sum = prod + res[p2];
+                res[p2] = sum % 10;
+                res[p1] += sum / 10;
+            }
+        }
+
+        // Build result string, trimming leading zeros
+        string result;
+        for (int d : res) {
+            if (!(result.empty() && d == 0))
+                result += itc(d);
+        }
+        number = result.empty() ? "0" : result;
+        isNegative = isNegative != other.isNegative; // XOR sign rule
+        removeLeadingZeros();
         return *this;
     }
 
     // Division assignment operator (x /= y)
+    // Truncation toward zero; sign via XOR rule (page 7).
     BigInt &operator/=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        if (other.number == "0")
+            throw runtime_error("Division by zero");
+
+        int cmp = compareMagnitude(other);
+        if (cmp < 0) {
+            // |this| < |other|: truncation toward zero gives 0
+            number = "0";
+            isNegative = false;
+            return *this;
+        }
+
+        bool resultNeg = isNegative != other.isNegative; // XOR sign rule
+
+        // Work on absolute values using digit-by-digit long division
+        const string &dividendStr = number;
+        const string &divisorStr  = other.number;
+        BigInt divisor(divisorStr);
+
+        string quotient;
+        string current; // running partial dividend
+
+        for (char digit : dividendStr) {
+            current += digit;
+            // Strip leading zeros from partial dividend
+            size_t s = current.find_first_not_of('0');
+            current = (s != string::npos) ? current.substr(s) : "0";
+
+            // Count how many times divisor fits into current (at most 9)
+            int count = 0;
+            BigInt cur(current);
+            while (cur.compareMagnitude(divisor) >= 0) {
+                cur.number = subtractMagnitudes(cur.number, divisor.number);
+                cur.removeLeadingZeros();
+                ++count;
+            }
+            quotient += itc(count);
+            current = cur.number; // remainder becomes next partial dividend
+        }
+
+        // Strip leading zeros from quotient
+        size_t s = quotient.find_first_not_of('0');
+        number = (s != string::npos) ? quotient.substr(s) : "0";
+        isNegative = resultNeg;
+        removeLeadingZeros();
         return *this;
     }
 
     // Modulus assignment operator (x %= y)
+    // Result sign matches the dividend (this), per page 7 and page 12 warning.
     BigInt &operator%=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        if (other.number == "0")
+            throw runtime_error("Division by zero");
+
+        bool dividendNeg = isNegative;
+        // remainder = dividend - (dividend / divisor) * divisor
+        BigInt q(*this);
+        q /= other;
+        q *= other;
+        *this -= q;
+        // Enforce: result sign matches original dividend sign
+        if (number == "0") isNegative = false;
+        else               isNegative = dividendNeg;
         return *this;
     }
 
@@ -217,44 +354,33 @@ public:
     friend bool operator<(const BigInt &lhs, const BigInt &rhs);
 
     // BIGINT-26: friend access for each test suite
+    friend BigInt absolute_addition(BigInt lhs, const BigInt &rhs);
     friend TestResult runNormalizationTests();
     friend TestResult runNormalizationEdgeCaseTests();
     friend TestResult runConstructorTests();
     friend TestResult runAssignmentAndOutputTests();
     friend TestResult runInputStreamTests();
+    friend TestResult runAdditionTests();
+    friend TestResult runSubtractionTests();
+    friend TestResult runMultiplicationTests();
+    friend TestResult runDivisionTests();
+    friend TestResult runModulusTests();
 };
 
-// Binary addition operator (x + y)
-BigInt operator+(BigInt lhs, const BigInt &rhs)
+// ---------------------------------------------------------------------------
+// BIGINT-42: Binary arithmetic operators — thin wrappers over compound operators
+// ---------------------------------------------------------------------------
+
+BigInt operator+(BigInt lhs, const BigInt &rhs) { lhs += rhs; return lhs; }
+
+BigInt absolute_addition(BigInt lhs, const BigInt &rhs)
 {
-    BigInt result;
-    
-    if(!lhs.isNegative && !rhs->isNegative){
-        result = absolute_addition(lhs, rhs);
-    }
-    if(lhs.isNegative && rhs->isNegative){
-        result = absolute_addition(lhs, rhs);
-        result.isNegative = true;
-    }
-    if(!lhs.isNegative && rhs->isNegative){
-        result = lhs - rhs;
-    }
-    if(lhs.isNegative && !rhs->isNegative){
-        result = rhs - lhs;
-    }
-
-    return result;
-
-   
-}
-
-BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
     BigInt result;
     int lhs_pointer = lhs.number.size() - 1;
     int rhs_pointer = rhs.number.size() - 1;
     int intermediate = 0;
     bool carry;
-    
+
     while(lhs_pointer > -1 || rhs_pointer > -1 || carry){
         intermediate = carry;
         //The strategy is to have each digit add itself to a sum, the sum is like a bucket
@@ -263,7 +389,7 @@ BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
             intermediate += cti(lhs.number[lhs_pointer]);
         if(rhs_pointer > -1)
             intermediate += cti(rhs.number[rhs_pointer]);
-        
+
         result.number += itc(intermediate % 10);
         carry = intermediate > 9;
 
@@ -275,38 +401,10 @@ BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
 
     return result;
 }
-
-// Binary subtraction operator (x - y)
-BigInt operator-(BigInt lhs, const BigInt &rhs)
-{
-    BigInt result;
-    // TODO: Implement this operator
-    return result;
-}
-
-// Binary multiplication operator (x * y)
-BigInt operator*(BigInt lhs, const BigInt &rhs)
-{
-    BigInt result;
-    // TODO: Implement this operator
-    return result;
-}
-
-// Binary division operator (x / y)
-BigInt operator/(BigInt lhs, const BigInt &rhs)
-{
-    BigInt result;
-    // TODO: Implement this operator
-    return result;
-}
-
-// Binary modulus operator (x % y)
-BigInt operator%(BigInt lhs, const BigInt &rhs)
-{
-    BigInt result;
-    // TODO: Implement this operator
-    return result;
-}
+BigInt operator-(BigInt lhs, const BigInt &rhs) { lhs -= rhs; return lhs; }
+BigInt operator*(BigInt lhs, const BigInt &rhs) { lhs *= rhs; return lhs; }
+BigInt operator/(BigInt lhs, const BigInt &rhs) { lhs /= rhs; return lhs; }
+BigInt operator%(BigInt lhs, const BigInt &rhs) { lhs %= rhs; return lhs; }
 
 // Equality comparison operator (x == y)
 bool operator==(const BigInt &lhs, const BigInt &rhs)
@@ -388,10 +486,6 @@ static TestResult runNormalizationTests()
 
 // ---------------------------------------------------------------------------
 // BIGINT-28: normalization edge cases ("page 12 common mistakes")
-//   - Multiple leading zeros in positive strings
-//   - Negative zero variants ("-0", "-00", "-000123" with zero digits)
-//   - Very long zero strings
-//   - Mixed: "-007" should become "-7", not "-007"
 // BIGINT-29: checkEq shows expected vs actual on failure
 // ---------------------------------------------------------------------------
 static TestResult runNormalizationEdgeCaseTests()
@@ -505,7 +599,6 @@ static TestResult runConstructorTests()
         BigInt dst(src);
         checkEq(dst.toString(), "12345", "copy of positive: same value");
         checkBool(dst.isNegative, false, "copy of positive: not negative");
-        // Independence: modifying src's string should not affect dst
         src = BigInt(99);
         checkEq(dst.toString(), "12345", "copy is independent after src reassignment");
     }
@@ -553,20 +646,17 @@ static TestResult runAssignmentAndOutputTests()
 
     cout << "--- assignment operator ---\n";
 
-    // copy assignment
     BigInt src(42);
     BigInt dst;
     dst = src;
     checkEq(dst.number, "42",  "copy assignment: value copied");
     checkBool(dst.isNegative, false, "copy assignment: sign copied");
 
-    // self-assignment guard
     BigInt self("999");
     self = self;
     checkEq(self.number, "999", "self-assignment: value unchanged");
     checkBool(self.isNegative, false, "self-assignment: sign unchanged");
 
-    // chained assignment
     BigInt a, b;
     a = b = BigInt("-7");
     checkEq(a.number, "7",  "chained assignment: a gets -7 (digits)");
@@ -574,7 +664,6 @@ static TestResult runAssignmentAndOutputTests()
     checkEq(b.number, "7",  "chained assignment: b gets -7 (digits)");
     checkBool(b.isNegative, true, "chained assignment: b is negative");
 
-    // assigning zero clears isNegative
     BigInt neg("-5");
     neg = BigInt(0);
     checkEq(neg.number, "0",  "assign zero: digits become \"0\"");
@@ -660,7 +749,220 @@ static TestResult runInputStreamTests()
 }
 
 // ---------------------------------------------------------------------------
-// BIGINT-26: lightweight test driver — runs all Sprint 1 suites and
+// BIGINT-37: Addition tests (operator+= / operator+)
+// ---------------------------------------------------------------------------
+static TestResult runAdditionTests()
+{
+    TestResult r;
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+
+    cout << "--- addition ---\n";
+    // positive + positive
+    checkEq((BigInt("123") + BigInt("456")).toString(), "579",
+            "positive + positive: 123 + 456 = 579");
+    // negative + negative
+    checkEq((BigInt("-50") + BigInt("-30")).toString(), "-80",
+            "negative + negative: -50 + -30 = -80");
+    // positive + negative (positive wins)
+    checkEq((BigInt("100") + BigInt("-40")).toString(), "60",
+            "positive + negative: 100 + -40 = 60");
+    // positive + negative (negative wins)
+    checkEq((BigInt("40") + BigInt("-100")).toString(), "-60",
+            "positive + negative: 40 + -100 = -60");
+    // negative + positive
+    checkEq((BigInt("-70") + BigInt("20")).toString(), "-50",
+            "negative + positive: -70 + 20 = -50");
+    // cancel to zero
+    checkEq((BigInt("99") + BigInt("-99")).toString(), "0",
+            "cancel to zero: 99 + -99 = 0");
+    // carry across multiple digits
+    checkEq((BigInt("999") + BigInt("1")).toString(), "1000",
+            "carry across digits: 999 + 1 = 1000");
+    checkEq((BigInt("999999999") + BigInt("1")).toString(), "1000000000",
+            "carry across many digits: 999999999 + 1 = 1000000000");
+    // large numbers
+    checkEq((BigInt("123456789012345678901234567890") +
+             BigInt("987654321098765432109876543210")).toString(),
+            "1111111110111111111011111111100",
+            "large positive + large positive");
+    // add zero
+    checkEq((BigInt("42") + BigInt("0")).toString(), "42", "n + 0 = n");
+    checkEq((BigInt("0") + BigInt("-5")).toString(), "-5", "0 + (-5) = -5");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-38: Subtraction tests (operator-= / operator-)
+// ---------------------------------------------------------------------------
+static TestResult runSubtractionTests()
+{
+    TestResult r;
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+
+    cout << "--- subtraction ---\n";
+    // equal numbers -> zero (no negative zero)
+    checkEq((BigInt("55") - BigInt("55")).toString(), "0",
+            "equal numbers: 55 - 55 = 0");
+    // positive - larger positive -> negative
+    checkEq((BigInt("30") - BigInt("100")).toString(), "-70",
+            "positive - larger positive: 30 - 100 = -70");
+    // negative - negative
+    checkEq((BigInt("-10") - BigInt("-3")).toString(), "-7",
+            "negative - negative: -10 - -3 = -7");
+    checkEq((BigInt("-3") - BigInt("-10")).toString(), "7",
+            "negative - negative (result positive): -3 - -10 = 7");
+    // negative - positive
+    checkEq((BigInt("-5") - BigInt("3")).toString(), "-8",
+            "negative - positive: -5 - 3 = -8");
+    // borrow logic
+    checkEq((BigInt("1000") - BigInt("1")).toString(), "999",
+            "borrow across digits: 1000 - 1 = 999");
+    // subtract zero
+    checkEq((BigInt("42") - BigInt("0")).toString(), "42", "n - 0 = n");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-39: Multiplication tests (operator*= / operator*)
+// ---------------------------------------------------------------------------
+static TestResult runMultiplicationTests()
+{
+    TestResult r;
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+
+    cout << "--- multiplication ---\n";
+    // zero cases
+    checkEq((BigInt("0") * BigInt("12345")).toString(), "0", "0 * n = 0");
+    checkEq((BigInt("12345") * BigInt("0")).toString(), "0", "n * 0 = 0");
+    // single-digit x multi-digit
+    checkEq((BigInt("7") * BigInt("123")).toString(), "861", "7 * 123 = 861");
+    checkEq((BigInt("9") * BigInt("9")).toString(), "81", "9 * 9 = 81");
+    // negative x positive (sign XOR rule)
+    checkEq((BigInt("-3") * BigInt("5")).toString(), "-15", "-3 * 5 = -15");
+    checkEq((BigInt("-3") * BigInt("-5")).toString(), "15", "-3 * -5 = 15");
+    // large numbers (page 10 expected output)
+    checkEq((BigInt("12345678") * BigInt("87654321")).toString(),
+            "1082152022374638", "12345678 * 87654321 = 1082152022374638");
+    checkEq((BigInt("999") * BigInt("999")).toString(), "998001", "999 * 999 = 998001");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-40: Division tests (operator/= / operator/)
+// ---------------------------------------------------------------------------
+static TestResult runDivisionTests()
+{
+    TestResult r;
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+    auto checkThrows = [&](const char* desc) {
+        try {
+            BigInt a("5"); BigInt b("0"); a /= b;
+            cout << "  FAIL: " << desc << " (no exception thrown)\n"; ++r.failed;
+        } catch (const runtime_error&) {
+            cout << "  PASS: " << desc << "\n"; ++r.passed;
+        }
+    };
+
+    cout << "--- division ---\n";
+    // divide by zero
+    checkThrows("divide by zero throws runtime_error");
+    // exact division
+    checkEq((BigInt("100") / BigInt("5")).toString(), "20", "100 / 5 = 20");
+    checkEq((BigInt("81") / BigInt("9")).toString(), "9", "81 / 9 = 9");
+    // non-exact division (truncation toward zero)
+    checkEq((BigInt("10") / BigInt("3")).toString(), "3", "10 / 3 = 3 (truncated)");
+    checkEq((BigInt("7") / BigInt("2")).toString(), "3", "7 / 2 = 3 (truncated)");
+    // divisor larger than dividend
+    checkEq((BigInt("3") / BigInt("10")).toString(), "0", "3 / 10 = 0");
+    // negative division (truncation toward zero)
+    checkEq((BigInt("-10") / BigInt("3")).toString(), "-3", "-10 / 3 = -3 (toward zero)");
+    checkEq((BigInt("10") / BigInt("-3")).toString(), "-3", "10 / -3 = -3 (toward zero)");
+    checkEq((BigInt("-10") / BigInt("-3")).toString(), "3", "-10 / -3 = 3");
+    // large numbers
+    checkEq((BigInt("1082152022374638") / BigInt("12345678")).toString(),
+            "87654321", "1082152022374638 / 12345678 = 87654321");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-41: Modulus tests (operator%= / operator%)
+// ---------------------------------------------------------------------------
+static TestResult runModulusTests()
+{
+    TestResult r;
+    auto checkEq = [&](const string& actual, const string& expected, const char* desc) {
+        if (actual == expected) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else {
+            cout << "  FAIL: " << desc << "\n"
+                 << "        expected: \"" << expected << "\"\n"
+                 << "        actual:   \"" << actual   << "\"\n";
+            ++r.failed;
+        }
+    };
+    auto checkThrows = [&](const char* desc) {
+        try {
+            BigInt a("5"); BigInt b("0"); a %= b;
+            cout << "  FAIL: " << desc << " (no exception thrown)\n"; ++r.failed;
+        } catch (const runtime_error&) {
+            cout << "  PASS: " << desc << "\n"; ++r.passed;
+        }
+    };
+
+    cout << "--- modulus ---\n";
+    // divide by zero
+    checkThrows("modulus by zero throws runtime_error");
+    // positive % positive
+    checkEq((BigInt("10") % BigInt("3")).toString(), "1", "10 % 3 = 1");
+    checkEq((BigInt("9") % BigInt("3")).toString(), "0", "9 % 3 = 0 (exact)");
+    // negative % positive (sign follows dividend)
+    checkEq((BigInt("-7") % BigInt("3")).toString(), "-1", "-7 % 3 = -1 (sign = dividend)");
+    // positive % negative (sign follows dividend)
+    checkEq((BigInt("7") % BigInt("-3")).toString(), "1", "7 % -3 = 1 (sign = dividend)");
+    // dividend smaller than divisor
+    checkEq((BigInt("3") % BigInt("10")).toString(), "3", "3 % 10 = 3");
+    checkEq((BigInt("-3") % BigInt("10")).toString(), "-3", "-3 % 10 = -3");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-26: lightweight test driver — runs all suites and
 //            prints a per-suite summary plus an overall PASS/FAIL line.
 // ---------------------------------------------------------------------------
 int main()
@@ -674,6 +976,11 @@ int main()
         { "Constructors",               runConstructorTests()          },
         { "Assignment & Output",        runAssignmentAndOutputTests()  },
         { "Input Stream (operator>>)",  runInputStreamTests()          },
+        { "Addition  (BIGINT-37)",       runAdditionTests()             },
+        { "Subtraction (BIGINT-38)",    runSubtractionTests()          },
+        { "Multiplication (BIGINT-39)", runMultiplicationTests()       },
+        { "Division (BIGINT-40)",       runDivisionTests()             },
+        { "Modulus (BIGINT-41)",        runModulusTests()              },
     };
 
     cout << "\n=== Suite Summary ===\n";
