@@ -142,9 +142,7 @@ public:
     // Unary plus operator (+x)
     BigInt operator+() const
     {
-        BigInt result;
-        // TODO: Implement this operator
-        return result;
+        return *this;
     }
 
     // Addition assignment operator (x += y)
@@ -298,30 +296,30 @@ public:
     // Pre-increment operator (++x)
     BigInt &operator++()
     {
-        // TODO: Implement this operator
+        *this += BigInt(1);
         return *this;
     }
 
     // Post-increment operator (x++)
     BigInt operator++(int)
     {
-        BigInt temp;
-        // TODO: Implement this operator
+        BigInt temp(*this);
+        *this += BigInt(1);
         return temp;
     }
 
     // Pre-decrement operator (--x)
     BigInt &operator--()
     {
-        // TODO: Implement this operator
+        *this -= BigInt(1);
         return *this;
     }
 
     // Post-decrement operator (x--)
     BigInt operator--(int)
     {
-        BigInt temp;
-        // TODO: Implement this operator
+        BigInt temp(*this);
+        *this -= BigInt(1);
         return temp;
     }
 
@@ -354,7 +352,6 @@ public:
     friend bool operator<(const BigInt &lhs, const BigInt &rhs);
 
     // BIGINT-26: friend access for each test suite
-    friend BigInt absolute_addition(BigInt lhs, const BigInt &rhs);
     friend TestResult runNormalizationTests();
     friend TestResult runNormalizationEdgeCaseTests();
     friend TestResult runConstructorTests();
@@ -365,6 +362,9 @@ public:
     friend TestResult runMultiplicationTests();
     friend TestResult runDivisionTests();
     friend TestResult runModulusTests();
+    friend TestResult runUnaryAndIncDecTests();
+    friend TestResult runComparisonTests();
+    friend TestResult runEdgeCaseAuditTests();
 };
 
 // ---------------------------------------------------------------------------
@@ -372,35 +372,6 @@ public:
 // ---------------------------------------------------------------------------
 
 BigInt operator+(BigInt lhs, const BigInt &rhs) { lhs += rhs; return lhs; }
-
-BigInt absolute_addition(BigInt lhs, const BigInt &rhs)
-{
-    BigInt result;
-    int lhs_pointer = lhs.number.size() - 1;
-    int rhs_pointer = rhs.number.size() - 1;
-    int intermediate = 0;
-    bool carry;
-
-    while(lhs_pointer > -1 || rhs_pointer > -1 || carry){
-        intermediate = carry;
-        //The strategy is to have each digit add itself to a sum, the sum is like a bucket
-        //If the digit exists, it throws itself in there
-        if(lhs_pointer > -1)
-            intermediate += cti(lhs.number[lhs_pointer]);
-        if(rhs_pointer > -1)
-            intermediate += cti(rhs.number[rhs_pointer]);
-
-        result.number += itc(intermediate % 10);
-        carry = intermediate > 9;
-
-        lhs_pointer--;
-        rhs_pointer--;
-    }
-
-    reverse(result.number.begin(),result.number.end());
-
-    return result;
-}
 BigInt operator-(BigInt lhs, const BigInt &rhs) { lhs -= rhs; return lhs; }
 BigInt operator*(BigInt lhs, const BigInt &rhs) { lhs *= rhs; return lhs; }
 BigInt operator/(BigInt lhs, const BigInt &rhs) { lhs /= rhs; return lhs; }
@@ -409,43 +380,45 @@ BigInt operator%(BigInt lhs, const BigInt &rhs) { lhs %= rhs; return lhs; }
 // Equality comparison operator (x == y)
 bool operator==(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return lhs.isNegative == rhs.isNegative && lhs.number == rhs.number;
 }
 
 // Inequality comparison operator (x != y)
 bool operator!=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(lhs == rhs);
 }
 
 // Less-than comparison operator (x < y)
 bool operator<(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    // Different signs: negative < positive
+    if (lhs.isNegative != rhs.isNegative)
+        return lhs.isNegative;
+
+    // Same sign: compare magnitudes
+    int cmp = lhs.compareMagnitude(rhs);
+    // Both positive: smaller magnitude means smaller value
+    // Both negative: smaller magnitude means larger value (more to the right on number line)
+    return lhs.isNegative ? (cmp > 0) : (cmp < 0);
 }
 
 // Less-than-or-equal comparison operator (x <= y)
 bool operator<=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(rhs < lhs);
 }
 
 // Greater-than comparison operator (x > y)
 bool operator>(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return rhs < lhs;
 }
 
 // Greater-than-or-equal comparison operator (x >= y)
 bool operator>=(const BigInt &lhs, const BigInt &rhs)
 {
-    // TODO: Implement this operator
-    return false;
+    return !(lhs < rhs);
 }
 
 // ---------------------------------------------------------------------------
@@ -962,25 +935,246 @@ static TestResult runModulusTests()
 }
 
 // ---------------------------------------------------------------------------
+// BIGINT-78: Unary plus, unary minus, pre/post increment/decrement tests
+// ---------------------------------------------------------------------------
+TestResult runUnaryAndIncDecTests()
+{
+    TestResult r;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else       { cout << "  FAIL: " << desc << "\n"; ++r.failed; }
+    };
+
+    cout << "\n--- Unary Plus ---\n";
+    BigInt a(42);
+    check((+a).toString() == "42",    "+42 == 42");
+    BigInt b(-7);
+    check((+b).toString() == "-7",    "+(-7) == -7");
+    BigInt z(0);
+    check((+z).toString() == "0",     "+0 == 0");
+
+    cout << "\n--- Unary Minus ---\n";
+    check((-a).toString() == "-42",   "-42 == -42");
+    check((-b).toString() == "7",     "-(-7) == 7");
+    check((-z).toString() == "0",     "-0 == 0");
+    // double negation
+    check((-(-a)).toString() == "42", "--42 == 42");
+
+    cout << "\n--- Pre-increment (++x) ---\n";
+    BigInt x(5);
+    BigInt &ref = ++x;
+    check(x.toString() == "6",        "++5 yields 6");
+    check(ref.toString() == "6",      "++x returns *this (value 6)");
+    BigInt neg(-1);
+    ++neg;
+    check(neg.toString() == "0",      "++-1 yields 0");
+    BigInt negTwo(-2);
+    ++negTwo;
+    check(negTwo.toString() == "-1",  "++-2 yields -1");
+
+    cout << "\n--- Post-increment (x++) ---\n";
+    BigInt p(10);
+    BigInt old = p++;
+    check(old.toString() == "10",     "x++ returns old value 10");
+    check(p.toString() == "11",       "x++ increments to 11");
+
+    cout << "\n--- Pre-decrement (--x) ---\n";
+    BigInt d(3);
+    BigInt &dref = --d;
+    check(d.toString() == "2",        "--3 yields 2");
+    check(dref.toString() == "2",     "--x returns *this (value 2)");
+    BigInt zero2(0);
+    --zero2;
+    check(zero2.toString() == "-1",   "--0 yields -1");
+
+    cout << "\n--- Post-decrement (x--) ---\n";
+    BigInt q(7);
+    BigInt qold = q--;
+    check(qold.toString() == "7",     "x-- returns old value 7");
+    check(q.toString() == "6",        "x-- decrements to 6");
+
+    cout << "\n--- Inc/Dec across zero ---\n";
+    BigInt crossPos(0);
+    crossPos++;
+    check(crossPos.toString() == "1", "0++ yields 1");
+    BigInt crossNeg(0);
+    crossNeg--;
+    check(crossNeg.toString() == "-1","0-- yields -1");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-79: Equality and ordering comparison operator tests
+// ---------------------------------------------------------------------------
+TestResult runComparisonTests()
+{
+    TestResult r;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else       { cout << "  FAIL: " << desc << "\n"; ++r.failed; }
+    };
+
+    BigInt pos5(5), pos5b(5), neg5(-5), pos3(3), neg3(-3), zero(0), zero2(0);
+    BigInt big("123456789012345678901234567890");
+    BigInt bigb("123456789012345678901234567890");
+    BigInt bigger("999999999999999999999999999999");
+
+    cout << "\n--- operator== ---\n";
+    check(pos5 == pos5b,   "5 == 5");
+    check(zero == zero2,   "0 == 0");
+    check(big == bigb,     "large == large");
+    check(!(pos5 == neg5), "5 != -5");
+    check(!(pos5 == pos3), "5 != 3");
+
+    cout << "\n--- operator!= ---\n";
+    check(pos5 != neg5,    "5 != -5");
+    check(pos5 != pos3,    "5 != 3");
+    check(!(pos5 != pos5b),"!(5 != 5)");
+
+    cout << "\n--- operator< ---\n";
+    check(pos3 < pos5,     "3 < 5");
+    check(neg5 < pos5,     "-5 < 5");
+    check(neg5 < neg3,     "-5 < -3");
+    check(neg5 < zero,     "-5 < 0");
+    check(zero < pos5,     "0 < 5");
+    check(!(pos5 < pos3),  "!(5 < 3)");
+    check(!(pos5 < pos5b), "!(5 < 5)");
+    check(big < bigger,    "large < larger");
+
+    cout << "\n--- operator<= ---\n";
+    check(pos3 <= pos5,    "3 <= 5");
+    check(pos5 <= pos5b,   "5 <= 5");
+    check(neg5 <= neg3,    "-5 <= -3");
+    check(!(pos5 <= pos3), "!(5 <= 3)");
+
+    cout << "\n--- operator> ---\n";
+    check(pos5 > pos3,     "5 > 3");
+    check(pos5 > neg5,     "5 > -5");
+    check(neg3 > neg5,     "-3 > -5");
+    check(zero > neg5,     "0 > -5");
+    check(!(pos3 > pos5),  "!(3 > 5)");
+    check(!(pos5 > pos5b), "!(5 > 5)");
+
+    cout << "\n--- operator>= ---\n";
+    check(pos5 >= pos3,    "5 >= 3");
+    check(pos5 >= pos5b,   "5 >= 5");
+    check(neg3 >= neg5,    "-3 >= -5");
+    check(!(pos3 >= pos5), "!(3 >= 5)");
+
+    cout << "\n--- Zero comparisons ---\n";
+    BigInt negZero(0);
+    check(zero == negZero,  "0 == 0 (no negative zero)");
+    check(!(zero < negZero),"!(0 < 0)");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
+// BIGINT-81: Edge-case audit — all common mistakes from page 12 of the guide
+// ---------------------------------------------------------------------------
+TestResult runEdgeCaseAuditTests()
+{
+    TestResult r;
+    auto check = [&](bool cond, const char* desc) {
+        if (cond) { cout << "  PASS: " << desc << "\n"; ++r.passed; }
+        else       { cout << "  FAIL: " << desc << "\n"; ++r.failed; }
+    };
+
+    cout << "\n--- Normalization: leading zeros stripped ---\n";
+    BigInt fromStr("000123");
+    check(fromStr.toString() == "123",       "\"000123\" -> \"123\"");
+    BigInt product = BigInt(10) * BigInt(10);
+    check(product.toString() == "100",       "10 * 10 -> \"100\" (no leading zeros)");
+
+    cout << "\n--- Negative zero never produced ---\n";
+    BigInt a(5), b(5);
+    BigInt diff = a - b;
+    check(diff.toString() == "0",            "5 - 5 == 0");
+    check(!diff.isNegative,                  "5 - 5 has isNegative == false");
+    BigInt c(-5), d(-5);
+    BigInt diff2 = c - d;
+    check(diff2.toString() == "0",           "-5 - (-5) == 0");
+    check(!diff2.isNegative,                 "-5 - (-5) has isNegative == false");
+    BigInt neg = -BigInt(0);
+    check(neg.toString() == "0",             "-0 == 0");
+    check(!neg.isNegative,                   "-0 has isNegative == false");
+
+    cout << "\n--- No intermediate int overflow in multiplication ---\n";
+    BigInt big1("999999999999999999");
+    BigInt big2("999999999999999999");
+    BigInt bigProd = big1 * big2;
+    check(bigProd.toString() == "999999999999999998000000000000000001",
+          "999999999999999999^2 is correct");
+
+    cout << "\n--- Wrong sign after subtracting equal numbers ---\n";
+    BigInt x(100), y(100);
+    BigInt res = x - y;
+    check(res.toString() == "0" && !res.isNegative, "100 - 100 == 0, not negative");
+
+    cout << "\n--- Division truncation toward zero (not floor) ---\n";
+    // -7 / 2 should be -3 (truncation), not -4 (floor)
+    BigInt neg7(-7), two(2);
+    BigInt divResult = neg7 / two;
+    check(divResult.toString() == "-3",      "-7 / 2 == -3 (truncation toward zero)");
+    // 7 / -2 should be -3 as well
+    BigInt pos7(7), neg2(-2);
+    BigInt divResult2 = pos7 / neg2;
+    check(divResult2.toString() == "-3",     "7 / -2 == -3 (truncation toward zero)");
+
+    cout << "\n--- Modulus sign follows dividend ---\n";
+    // -7 % 3 should be -1 (sign of dividend -7)
+    BigInt neg7b(-7), three(3);
+    BigInt modResult = neg7b % three;
+    check(modResult.toString() == "-1",      "-7 % 3 == -1 (sign follows dividend)");
+    // 7 % -3 should be 1 (sign of dividend 7)
+    BigInt pos7b(7), neg3(-3);
+    BigInt modResult2 = pos7b % neg3;
+    check(modResult2.toString() == "1",      "7 % -3 == 1 (sign follows dividend)");
+
+    cout << "\n--- Division by zero throws ---\n";
+    bool threw = false;
+    try { BigInt(5) / BigInt(0); } catch (const runtime_error&) { threw = true; }
+    check(threw, "5 / 0 throws runtime_error");
+    bool threw2 = false;
+    try { BigInt(5) % BigInt(0); } catch (const runtime_error&) { threw2 = true; }
+    check(threw2, "5 % 0 throws runtime_error");
+
+    cout << "\n--- Very large number arithmetic ---\n";
+    BigInt vl1("99999999999999999999999999999999999999999999999999");
+    BigInt vl2("1");
+    BigInt vlSum = vl1 + vl2;
+    check(vlSum.toString() == "100000000000000000000000000000000000000000000000000",
+          "50-digit number + 1 correct");
+    BigInt vlDiff = vlSum - vl2;
+    check(vlDiff == vl1, "round-trip: (vl1 + 1) - 1 == vl1");
+
+    return r;
+}
+
+// ---------------------------------------------------------------------------
 // BIGINT-26: lightweight test driver — runs all suites and
 //            prints a per-suite summary plus an overall PASS/FAIL line.
 // ---------------------------------------------------------------------------
 int main()
 {
-    cout << "=== BigInt Sprint 1 Test Harness ===\n\n";
+    cout << "=== BigInt Full Test Harness ===\n\n";
 
     struct Suite { const char* name; TestResult result; };
     Suite suites[] = {
-        { "Normalization (basic)",      runNormalizationTests()        },
-        { "Normalization (edge cases)", runNormalizationEdgeCaseTests()},
-        { "Constructors",               runConstructorTests()          },
-        { "Assignment & Output",        runAssignmentAndOutputTests()  },
-        { "Input Stream (operator>>)",  runInputStreamTests()          },
-        { "Addition  (BIGINT-37)",       runAdditionTests()             },
-        { "Subtraction (BIGINT-38)",    runSubtractionTests()          },
-        { "Multiplication (BIGINT-39)", runMultiplicationTests()       },
-        { "Division (BIGINT-40)",       runDivisionTests()             },
-        { "Modulus (BIGINT-41)",        runModulusTests()              },
+        { "Normalization (basic)",           runNormalizationTests()        },
+        { "Normalization (edge cases)",      runNormalizationEdgeCaseTests()},
+        { "Constructors",                    runConstructorTests()          },
+        { "Assignment & Output",             runAssignmentAndOutputTests()  },
+        { "Input Stream (operator>>)",       runInputStreamTests()          },
+        { "Addition  (BIGINT-37)",           runAdditionTests()             },
+        { "Subtraction (BIGINT-38)",         runSubtractionTests()          },
+        { "Multiplication (BIGINT-39)",      runMultiplicationTests()       },
+        { "Division (BIGINT-40)",            runDivisionTests()             },
+        { "Modulus (BIGINT-41)",             runModulusTests()              },
+        { "Unary & Inc/Dec (BIGINT-78)",     runUnaryAndIncDecTests()       },
+        { "Comparisons (BIGINT-79)",         runComparisonTests()           },
+        { "Edge-Case Audit (BIGINT-81)",     runEdgeCaseAuditTests()        },
     };
 
     cout << "\n=== Suite Summary ===\n";
