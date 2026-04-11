@@ -34,6 +34,10 @@ Testing/
 *.app
 *.dSYM/
 a.out
+bigint
 
 # Dependency files
 *.d
+
+# Claude
+.claude
