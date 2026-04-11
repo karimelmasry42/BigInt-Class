@@ -1,6 +1,10 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+
+#define cti(X) ((X) - 48)
+#define itc(X) ((X) + 48)
+
 using namespace std;
 
 // Aggregated result from a single test suite.
@@ -122,7 +126,7 @@ public:
     // Addition assignment operator (x += y)
     BigInt &operator+=(const BigInt &other)
     {
-        // TODO: Implement this operator
+        this = this + other;
         return *this;
     }
 
@@ -224,7 +228,51 @@ public:
 BigInt operator+(BigInt lhs, const BigInt &rhs)
 {
     BigInt result;
-    // TODO: Implement this operator
+    
+    if(!lhs.isNegative && !rhs->isNegative){
+        result = absolute_addition(lhs, rhs);
+    }
+    if(lhs.isNegative && rhs->isNegative){
+        result = absolute_addition(lhs, rhs);
+        result.isNegative = true;
+    }
+    if(!lhs.isNegative && rhs->isNegative){
+        result = lhs - rhs;
+    }
+    if(lhs.isNegative && !rhs->isNegative){
+        result = rhs - lhs;
+    }
+
+    return result;
+
+   
+}
+
+BigInt absolute_addition(BigInt lhs, const BigInt &rhs){
+    BigInt result;
+    int lhs_pointer = lhs.number.size() - 1;
+    int rhs_pointer = rhs.number.size() - 1;
+    int intermediate = 0;
+    bool carry;
+    
+    while(lhs_pointer > -1 || rhs_pointer > -1 || carry){
+        intermediate = carry;
+        //The strategy is to have each digit add itself to a sum, the sum is like a bucket
+        //If the digit exists, it throws itself in there
+        if(lhs_pointer > -1)
+            intermediate += cti(lhs.number[lhs_pointer]);
+        if(rhs_pointer > -1)
+            intermediate += cti(rhs.number[rhs_pointer]);
+        
+        result.number += itc(intermediate % 10);
+        carry = intermediate > 9;
+
+        lhs_pointer--;
+        rhs_pointer--;
+    }
+
+    reverse(result.number.begin(),result.number.end());
+
     return result;
 }
 
